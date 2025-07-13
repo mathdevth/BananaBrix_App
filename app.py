@@ -200,7 +200,7 @@ if image_source is not None:
     # ***สำคัญ: ตรงนี้ image_np เป็น RGB และ get_avg_color_rgb จะแปลงเป็น BGR เอง***
     ripeness_result = get_avg_color_rgb(image_np) 
 
-    st.image(image_pil, caption='รูปภาพกล้วยน้ำว้าของคุณ', use_column_width=True)
+    st.image(image_pil, caption='รูปภาพกล้วยน้ำว้าของคุณ', use_container_width=True)
 
     st.header("2. ผลการประเมิน")
     if st.button('ประเมินสถานะกล้วย', use_container_width=True): # ทำให้ปุ่มกว้างเต็มคอลัมน์

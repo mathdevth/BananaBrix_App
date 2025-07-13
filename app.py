@@ -72,7 +72,7 @@ elif camera_input is not None:
 if image_source is not None:
     # อ่านรูปภาพจาก Streamlit
     image_bytes = image_source.read()
-    image_pil = Image.open(io.BytesBytesIO(image_bytes))
+    image_pil = Image.open(io.BytesIO(image_bytes))
     image_np = np.array(image_pil) # แปลง PIL Image เป็น NumPy array (RGB)
     image_np_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR) # แปลงเป็น BGR สำหรับ OpenCV
 

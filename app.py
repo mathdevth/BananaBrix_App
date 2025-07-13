@@ -175,62 +175,59 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# --- ส่วนหัวข้อแอป (ใช้ st.columns เพื่อจัด layout) ---
-col_logo, col_title = st.columns([1, 4])
-with col_logo:
-    st.image("https://images.emojiterra.com/google/noto-emoji/unicode-15/color/512px/1f34c.png", width=70) # รูปกล้วยอีโมจิ
-with col_title:
-    st.title("แอปประเมินระดับความหวานและสถานะกล้วยน้ำว้า")
+# --- ส่วนหัวข้อแอป ---
+st.image("https://images.emojiterra.com/google/noto-emoji/unicode-15/color/512px/1f34c.png", width=70) # รูปกล้วยอีโมจิ
+st.title("แอปประเมินระดับความหวานและสถานะกล้วยน้ำว้า")
 st.markdown("---")
 
 
-# --- ส่วนหลักของแอป (ใช้ st.columns เพื่อจัด layout) ---
-col1, col2 = st.columns(2) # แบ่งเป็น 2 คอลัมน์
+# --- ส่วนหลักของแอป (จัดวางเรียงลงมา) ---
+st.header("1. ถ่ายภาพหรืออัปโหลดรูปกล้วยน้ำว้า")
+uploaded_file = st.file_uploader("เลือกรูปภาพกล้วยน้ำว้า", type=["jpg", "jpeg", "png"])
+camera_input = st.camera_input("หรือ ถ่ายรูปกล้วยน้ำว้าจากกล้อง")
 
-with col1:
-    st.header("1. ถ่ายภาพหรืออัปโหลดรูปกล้วยน้ำว้า")
-    uploaded_file = st.file_uploader("เลือกรูปภาพกล้วยน้ำว้า", type=["jpg", "jpeg", "png"])
-    camera_input = st.camera_input("หรือ ถ่ายรูปกล้วยน้ำว้าจากกล้อง")
+image_source = None
+if uploaded_file is not None:
+    image_source = uploaded_file
+elif camera_input is not None:
+    image_source = camera_input
 
-with col2:
+if image_source is not None:
+    image_bytes = image_source.read()
+    image_pil = Image.open(io.BytesIO(image_bytes))
+    image_np = np.array(image_pil)
+    
+    # ***สำคัญ: ตรงนี้ image_np เป็น RGB และ get_avg_color_rgb จะแปลงเป็น BGR เอง***
+    ripeness_result = get_avg_color_rgb(image_np) 
+
+    st.image(image_pil, caption='รูปภาพกล้วยน้ำว้าของคุณ', use_column_width=True)
+
     st.header("2. ผลการประเมิน")
-    image_source = None
-    if uploaded_file is not None:
-        image_source = uploaded_file
-    elif camera_input is not None:
-        image_source = camera_input
+    if st.button('ประเมินสถานะกล้วย', use_container_width=True): # ทำให้ปุ่มกว้างเต็มคอลัมน์
+        with st.spinner('กำลังวิเคราะห์...'):
+            if ripeness_result[0] is None: # ถ้า r_avg เป็น None
+                st.warning("ไม่พบกล้วยในภาพ หรือภาพไม่ชัดเจน กรุณาลองถ่ายภาพใหม่ให้เห็นกล้วยชัดเจน")
+            else:
+                r_avg, g_avg, b_avg = ripeness_result # ดึงค่า R, G, B ออกมา
 
-    if image_source is not None:
-        image_bytes = image_source.read()
-        image_pil = Image.open(io.BytesIO(image_bytes))
-        image_np = np.array(image_pil)
-        
-        # แสดงรูปภาพที่อัปโหลด
-        st.image(image_pil, caption='รูปภาพกล้วยน้ำว้าของคุณ', use_column_width=True)
+                # เตรียมข้อมูลสำหรับทำนาย (ต้องเป็นรูปแบบ 2D array)
+                input_features = np.array([[r_avg, g_avg, b_avg]])
+                predicted_brix = model.predict(input_features)[0]
 
-        if st.button('ประเมินสถานะกล้วย', use_container_width=True): # ทำให้ปุ่มกว้างเต็มคอลัมน์
-            with st.spinner('กำลังวิเคราะห์...'):
-                ripeness_result = get_avg_color_rgb(image_np) 
+                # ใช้ฟังก์ชันใหม่ในการประเมินระดับความสุกและคำแนะนำ
+                ripeness_level_num, ripeness_status, advice, percentage_ripeness = predict_ripeness(predicted_brix)
 
-                if ripeness_result[0] is None: # ถ้า r_avg เป็น None
-                    st.warning("ไม่พบกล้วยในภาพ หรือภาพไม่ชัดเจน กรุณาลองถ่ายภาพใหม่ให้เห็นกล้วยชัดเจน")
-                else:
-                    r_avg, g_avg, b_avg = ripeness_result # ดึงค่า R, G, B ออกมา
+                st.success("ประเมินเสร็จสิ้น!")
+                st.metric(label="ระดับความหวาน (Brix)", value=f"{predicted_brix:.2f} °Bx")
+                st.metric(label="ร้อยละความสุก", value=f"{percentage_ripeness:.1f}%") # แสดงผลร้อยละความสุก
+                st.subheader(f"สถานะกล้วยน้ำว้า: {ripeness_status}")
+                st.subheader(f"ระดับความสุก: {ripeness_level_num} (จาก 7 ระดับ)")
+                st.info(advice) # แสดงคำแนะนำ
+                st.caption(f"ค่าสีเฉลี่ย (RGB) ที่ได้: R={r_avg:.0f}, G={g_avg:.0f}, B={b_avg:.0f}")
 
-                    # เตรียมข้อมูลสำหรับทำนาย (ต้องเป็นรูปแบบ 2D array)
-                    input_features = np.array([[r_avg, g_avg, b_avg]])
-                    predicted_brix = model.predict(input_features)[0]
-
-                    # ใช้ฟังก์ชันใหม่ในการประเมินระดับความสุกและคำแนะนำ
-                    ripeness_level_num, ripeness_status, advice, percentage_ripeness = predict_ripeness(predicted_brix)
-
-                    st.success("ประเมินเสร็จสิ้น!")
-                    st.metric(label="ระดับความหวาน (Brix)", value=f"{predicted_brix:.2f} °Bx")
-                    st.metric(label="ร้อยละความสุก", value=f"{percentage_ripeness:.1f}%") # แสดงผลร้อยละความสุก
-                    st.subheader(f"สถานะกล้วยน้ำว้า: {ripeness_status}")
-                    st.subheader(f"ระดับความสุก: {ripeness_level_num} (จาก 7 ระดับ)")
-                    st.info(advice) # แสดงคำแนะนำ
-                    st.caption(f"ค่าสีเฉลี่ย (RGB) ที่ได้: R={r_avg:.0f}, G={g_avg:.0f}, B={b_avg:.0f}")
+else: # ข้อความแนะนำเมื่อยังไม่มีภาพ
+    st.info("กรุณาอัปโหลดรูปกล้วย หรือถ่ายภาพกล้วยเพื่อเริ่มการประเมิน")
 
 st.markdown("---")
+# ส่วนท้ายกระดาษ (Footer)
 st.markdown("พัฒนาโดย นางสาวนรินทร์ธร พิมสา, นางสาวนิชาภา ศรีละวัลย์ และนางสาวรัตนาวดี สว่างศรี<br>อาจารย์ที่ปรึกษา: นายอชิตพล บุณรัตน์, นางสาวปทุมวดี วงษ์สุธรรม และนางสาวสมใจ จันทรงกรด<br>โรงเรียนวังโพรงพิทยาคม สำนักงานเขตพื้นที่การศึกษามัธยมศึกษาพิษณุโลก อุตรดิตถ์", unsafe_allow_html=True)

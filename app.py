@@ -9,25 +9,19 @@ import os
 # --- ฟังก์ชัน get_avg_color_rgb (สำหรับประมวลผลสี) ---
 def get_avg_color_rgb(image_array):
     img = image_array
-    # image_array ที่รับเข้ามาจาก Streamlit จะเป็น RGB
-    # แต่ OpenCV (cv2) โดยทั่วไปทำงานกับ BGR.
     img_bgr = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
 
-    # Step 1: กำหนดช่วงสีของกล้วยในรูปแบบ BGR
-    # ค่าเหล่านี้อาจต้องปรับจูนตามสภาพแสงและชนิดกล้วยที่คุณครูใช้
-    # (B, G, R)
-    lower_banana_color_bgr = np.array([0, 80, 80])    # สีค่อนไปทางน้ำเงิน/เขียวน้อยๆ
-    upper_banana_color_bgr = np.array([120, 255, 255]) # สีค่อนไปทางแดง/เหลืองมาก
+    # Step 1: กำหนดช่วงสีของกล้วยในรูปแบบ BGR (อาจต้องปรับจูน)
+    lower_banana_color_bgr = np.array([0, 80, 80])
+    upper_banana_color_bgr = np.array([120, 255, 255])
 
-    # Step 2: สร้าง Mask เพื่อกรองพิกเซลที่อยู่ในช่วงสีที่กำหนด
+    # Step 2: สร้าง Mask
     color_mask = cv2.inRange(img_bgr, lower_banana_color_bgr, upper_banana_color_bgr)
 
-    # Step 3: หา Contours (โครงร่างของวัตถุที่เชื่อมต่อกัน) ใน Mask
-    # RETR_EXTERNAL: ค้นหาเฉพาะโครงร่างภายนอก
-    # CHAIN_APPROX_SIMPLE: บีบอัดจุดโครงร่างให้เรียบง่าย
+    # Step 3: หา Contours
     contours, _ = cv2.findContours(color_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # Step 4: หา Contours ที่มีพื้นที่ใหญ่ที่สุด (สันนิษฐานว่าเป็นกล้วย)
+    # Step 4: หา Contours ที่ใหญ่ที่สุด
     max_area = 0
     largest_contour = None
     for contour in contours:
@@ -37,37 +31,31 @@ def get_avg_color_rgb(image_array):
             largest_contour = contour
 
     # Step 5: กำหนดเกณฑ์ขั้นต่ำของพื้นที่พิกเซลที่ยอมรับว่าเป็นกล้วย
-    # **สำคัญมาก: ปรับค่านี้ตามขนาดของกล้วยในภาพถ่ายของคุณครู**
-    # ถ้าภาพกล้วยมีขนาดเล็กในภาพรวม ค่านี้ก็ควรน้อย
     min_banana_pixel_area = 5000 # ค่าเริ่มต้น ลองปรับเพิ่ม/ลด หากพบว่าตรวจจับผิดพลาด
 
-    # Step 6: ตรวจสอบว่าพบวัตถุที่ใหญ่พอและมีลักษณะเป็นสีของกล้วยหรือไม่
+    # Step 6: ตรวจสอบว่าพบกล้วยที่ใหญ่พอหรือไม่
     if largest_contour is None or max_area < min_banana_pixel_area:
-        # หากไม่พบวัตถุขนาดใหญ่พอ หรือไม่มีวัตถุที่อยู่ในช่วงสีที่กำหนด
-        return None, None, None # คืนค่า None เพื่อแจ้งว่าไม่พบกล้วย/ประมวลผลไม่ได้
+        return None, None, None # ไม่พบกล้วย
 
-    # Step 7: สร้าง Mask ใหม่ที่มีเฉพาะวัตถุที่ใหญ่ที่สุด (กล้วย) เท่านั้น
-    final_mask = np.zeros(img_bgr.shape[:2], dtype="uint8") # สร้าง Mask สีดำเปล่าๆ
-    cv2.drawContours(final_mask, [largest_contour], -1, 255, -1) # วาดโครงร่างที่ใหญ่ที่สุดให้เป็นสีขาว (255) ลงบน Mask
+    # Step 7: สร้าง Mask ใหม่ที่มีเฉพาะวัตถุที่ใหญ่ที่สุด
+    final_mask = np.zeros(img_bgr.shape[:2], dtype="uint8")
+    cv2.drawContours(final_mask, [largest_contour], -1, 255, -1)
 
-    # Step 8: คำนวณค่าเฉลี่ย BGR ของพิกเซล โดยใช้ Mask สุดท้ายนี้ (เฉพาะส่วนที่เป็นกล้วย)
-    mean_bgr = cv2.mean(img_bgr, mask=final_mask)[:3] # ใช้ final_mask
+    # Step 8: คำนวณค่าเฉลี่ย BGR
+    mean_bgr = cv2.mean(img_bgr, mask=final_mask)[:3]
 
-    avg_red = mean_bgr[2] # BGR -> RGB (R คือ index 2)
-    avg_green = mean_bgr[1] # G คือ index 1
-    avg_blue = mean_bgr[0] # B คือ index 0
+    avg_red = mean_bgr[2]
+    avg_green = mean_bgr[1]
+    avg_blue = mean_bgr[0]
 
     return avg_red, avg_green, avg_blue
 
 # --- ฟังก์ชันประเมินระดับความสุกและให้คำแนะนำจากค่า Brix ---
-# ปรับช่วงค่า Brix และคำอธิบายตามความเหมาะสมกับข้อมูลของคุณครู
 def predict_ripeness(brix_value):
-    ripeness_level_num = 0 # กำหนดค่าเริ่มต้น
+    ripeness_level_num = 0
     status_desc = ""
     advice_text = ""
 
-    # คำนวณร้อยละความสุก (Brix 0% = 0, Brix 30% = 100%)
-    # ค่า 30.0 เป็นค่า Brix สูงสุดที่คาดการณ์ว่าเป็นสุกจัดเต็มที่
     percentage_ripeness = min(100.0, max(0.0, (brix_value / 30.0) * 100.0))
 
     if brix_value <= 5.0:
@@ -101,11 +89,40 @@ def predict_ripeness(brix_value):
     
     return ripeness_level_num, status_desc, advice_text, percentage_ripeness
 
+# --- ฟังก์ชันคำนวณปริมาณน้ำตาลที่ควรได้รับต่อวัน ---
+def calculate_daily_sugar_allowance(age, weight, height, gender, is_patient, needs_weight_loss):
+    # Mifflin-St Jeor Equation for BMR (Basal Metabolic Rate)
+    if gender == "ชาย":
+        bmr = (10 * weight) + (6.25 * height) - (5 * age) + 5
+    else: # หญิง
+        bmr = (10 * weight) + (6.25 * height) - (5 * age) - 161
+
+    # Activity factor for TDEE (Total Daily Energy Expenditure) - Simplified
+    # Can expand this with more activity levels if needed
+    activity_factor = 1.2 # Sedentary (little to no exercise)
+    tdee = bmr * activity_factor
+
+    # Convert TDEE to recommended sugar intake (approx.)
+    # WHO recommends free sugars not exceeding 10% of total energy intake, ideally < 5%.
+    # 1 gram of sugar is approx. 4 kilocalories.
+    
+    # Let's use 5% of TDEE as a target for sugar for health-conscious/weight loss.
+    # And 10% as a general maximum.
+    
+    # For weight loss or patients, aim for a lower percentage.
+    if needs_weight_loss or is_patient:
+        target_sugar_calories_percent = 0.05 # 5% of TDEE
+    else:
+        target_sugar_calories_percent = 0.10 # 10% of TDEE
+
+    daily_sugar_calories = tdee * target_sugar_calories_percent
+    daily_sugar_grams = daily_sugar_calories / 4 # 1g sugar = 4 kcal
+
+    return daily_sugar_grams
+
 # --- โค้ด Streamlit App หลัก ---
 # กำหนดพาธไปยังโมเดลใน GitHub Repository
-# ***สำคัญ***: ไฟล์ banana_brix_model.pkl ต้องอยู่ในโฟลเดอร์เดียวกันกับ app.py ใน GitHub
 model_path = 'banana_brix_model.pkl' 
-# หากคุณวางไฟล์ .pkl ในโฟลเดอร์ชื่อ 'models' ใน GitHub ให้ใช้ 'models/banana_brix_model.pkl'
 
 # โหลดโมเดลที่ฝึกไว้
 try:
@@ -182,7 +199,21 @@ st.markdown("---")
 
 
 # --- ส่วนหลักของแอป (จัดวางเรียงลงมา) ---
-st.header("1. ถ่ายภาพหรืออัปโหลดรูปกล้วยน้ำว้า")
+st.header("1. ข้อมูลส่วนตัว (สำหรับคำแนะนำสุขภาพ)")
+col_personal_data_1, col_personal_data_2 = st.columns(2)
+with col_personal_data_1:
+    age = st.number_input("อายุ (ปี)", min_value=1, max_value=120, value=25)
+    weight = st.number_input("น้ำหนัก (กิโลกรัม)", min_value=1.0, max_value=200.0, value=60.0, step=0.1)
+with col_personal_data_2:
+    height = st.number_input("ส่วนสูง (เซนติเมตร)", min_value=10.0, max_value=250.0, value=170.0, step=0.1)
+    gender = st.selectbox("เพศ", ["ชาย", "หญิง"])
+
+is_patient = st.checkbox("เป็นผู้ป่วย (เช่น เบาหวาน)", help="ข้อมูลนี้ใช้เพื่อปรับคำแนะนำปริมาณน้ำตาลให้เหมาะสมยิ่งขึ้น")
+needs_weight_loss = st.checkbox("ต้องการลดน้ำหนัก / รักษาสุขภาพ", help="ข้อมูลนี้ใช้เพื่อปรับคำแนะนำปริมาณน้ำตาลให้เหมาะสมยิ่งขึ้น")
+
+st.markdown("---")
+
+st.header("2. ถ่ายภาพหรืออัปโหลดรูปกล้วยน้ำว้า")
 uploaded_file = st.file_uploader("เลือกรูปภาพกล้วยน้ำว้า", type=["jpg", "jpeg", "png"])
 camera_input = st.camera_input("หรือ ถ่ายรูปกล้วยน้ำว้าจากกล้อง")
 
@@ -197,37 +228,46 @@ if image_source is not None:
     image_pil = Image.open(io.BytesIO(image_bytes))
     image_np = np.array(image_pil)
     
-    # ***สำคัญ: ตรงนี้ image_np เป็น RGB และ get_avg_color_rgb จะแปลงเป็น BGR เอง***
-    ripeness_result = get_avg_color_rgb(image_np) 
-
     st.image(image_pil, caption='รูปภาพกล้วยน้ำว้าของคุณ', use_container_width=True)
 
-    st.header("2. ผลการประเมิน")
-    if st.button('ประเมินสถานะกล้วย', use_container_width=True): # ทำให้ปุ่มกว้างเต็มคอลัมน์
+    st.header("3. ผลการประเมินและคำแนะนำสุขภาพ") # ปรับเป็นหัวข้อที่ 3
+    if st.button('ประเมินสถานะกล้วยและรับคำแนะนำ', use_container_width=True): # ปรับข้อความปุ่ม
         with st.spinner('กำลังวิเคราะห์...'):
-            if ripeness_result[0] is None: # ถ้า r_avg เป็น None
+            ripeness_result = get_avg_color_rgb(image_np) 
+
+            if ripeness_result[0] is None:
                 st.warning("ไม่พบกล้วยในภาพ หรือภาพไม่ชัดเจน กรุณาลองถ่ายภาพใหม่ให้เห็นกล้วยชัดเจน")
             else:
-                r_avg, g_avg, b_avg = ripeness_result # ดึงค่า R, G, B ออกมา
+                r_avg, g_avg, b_avg = ripeness_result
 
-                # เตรียมข้อมูลสำหรับทำนาย (ต้องเป็นรูปแบบ 2D array)
                 input_features = np.array([[r_avg, g_avg, b_avg]])
                 predicted_brix = model.predict(input_features)[0]
 
-                # ใช้ฟังก์ชันใหม่ในการประเมินระดับความสุกและคำแนะนำ
                 ripeness_level_num, ripeness_status, advice, percentage_ripeness = predict_ripeness(predicted_brix)
 
-                st.success("ประเมินเสร็จสิ้น!")
+                # --- ส่วนแสดงผลลัพธ์จากกล้วย ---
+                st.success("ผลการประเมินกล้วยเสร็จสิ้น!")
                 st.metric(label="ระดับความหวาน (Brix)", value=f"{predicted_brix:.2f} °Bx")
-                st.metric(label="ร้อยละความสุก", value=f"{percentage_ripeness:.1f}%") # แสดงผลร้อยละความสุก
+                st.metric(label="ปริมาณน้ำตาล (กรัม/100กรัม)", value=f"{predicted_brix:.2f} g") # Brix ประมาณเท่ากับกรัมน้ำตาล/100กรัม
+                st.metric(label="ร้อยละความสุก", value=f"{percentage_ripeness:.1f}%")
                 st.subheader(f"สถานะกล้วยน้ำว้า: {ripeness_status}")
                 st.subheader(f"ระดับความสุก: {ripeness_level_num} (จาก 7 ระดับ)")
-                st.info(advice) # แสดงคำแนะนำ
+                st.info(advice) 
                 st.caption(f"ค่าสีเฉลี่ย (RGB) ที่ได้: R={r_avg:.0f}, G={g_avg:.0f}, B={b_avg:.0f}")
 
-else: # ข้อความแนะนำเมื่อยังไม่มีภาพ
-    st.info("กรุณาอัปโหลดรูปกล้วย หรือถ่ายภาพกล้วยเพื่อเริ่มการประเมิน")
+                st.markdown("---")
+                
+                # --- ส่วนคำแนะนำสุขภาพส่วนบุคคล ---
+                st.subheader("คำแนะนำปริมาณน้ำตาลสำหรับคุณ")
+                daily_sugar_grams_allowance = calculate_daily_sugar_allowance(age, weight, height, gender, is_patient, needs_weight_loss)
+                
+                st.info(f"ตามข้อมูลที่คุณให้ ปริมาณน้ำตาลที่แนะนำต่อวันของคุณคือประมาณ **{daily_sugar_grams_allowance:.1f} กรัม**")
+                st.write(f"ดังนั้น กล้วยน้ำว้า 100 กรัมนี้ (ประมาณ 1 ผลเล็กถึงกลาง) มีปริมาณน้ำตาลประมาณ **{predicted_brix:.1f} กรัม** ซึ่งคิดเป็น **{((predicted_brix / daily_sugar_grams_allowance) * 100):.1f}%** ของปริมาณที่แนะนำต่อวันของคุณ")
+                
+                st.warning("**ข้อจำกัด:** ข้อมูลนี้เป็นการประมาณการเบื้องต้น ไม่ใช่คำแนะนำทางการแพทย์ ควรปรึกษาแพทย์หรือนักโภชนาการสำหรับคำแนะนำเฉพาะบุคคล.")
+
+else:
+    st.info("กรุณาป้อนข้อมูลส่วนตัวด้านบน, อัปโหลดรูปกล้วย หรือถ่ายภาพกล้วยเพื่อเริ่มการประเมินและรับคำแนะนำสุขภาพ")
 
 st.markdown("---")
-# ส่วนท้ายกระดาษ (Footer)
 st.markdown("พัฒนาโดย นางสาวนรินทร์ธร พิมสา, นางสาวนิชาภา ศรีละวัลย์ และนางสาวรัตนาวดี สว่างศรี<br>อาจารย์ที่ปรึกษา: นายอชิตพล บุณรัตน์, นางสาวปทุมวดี วงษ์สุธรรม และนางสาวสมใจ จันทรงกรด<br>โรงเรียนวังโพรงพิทยาคม สำนักงานเขตพื้นที่การศึกษามัธยมศึกษาพิษณุโลก อุตรดิตถ์", unsafe_allow_html=True)
